@@ -1,8 +1,16 @@
--- إنشاء الواجهة في CoreGui ليظهر للمشغلات
+-- تحسين التوافق مع مشغلات الجوال مثل دلتا
 local HospitalGui = Instance.new("ScreenGui")
 HospitalGui.Name = "HospitalGui"
 HospitalGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-HospitalGui.Parent = game:GetService("CoreGui")
+
+-- محاولة استخدام gethui التابع للمشغلات، وإذا لم يتوفر يتم النقل إلى PlayerGui
+if gethui then
+    HospitalGui.Parent = gethui()
+elseif game:GetService("CoreGui"):FindFirstChild("RobloxGui") then
+    HospitalGui.Parent = game:GetService("CoreGui")
+else
+    HospitalGui.Parent = game:GetService("Players").LocalPlayer:WaitForChild("PlayerGui")
+end
 
 -- اللوحة الرئيسية
 local MainFrame = Instance.new("Frame")
@@ -89,13 +97,11 @@ local function getClosestPatient()
     local myCharacter = player.Character
     if not myCharacter or not myCharacter:FindFirstChild("HumanoidRootPart") then return nil end
     
-    -- البحث في بقية اللاعبين أو الشخصيات بـ Workspace
     for _, p in pairs(Players:GetPlayers()) do
         if p ~= player and p.Character and p.Character:FindFirstChild("HumanoidRootPart") and p.Character:FindFirstChild("Humanoid") then
             local targetChar = p.Character
             local targetHumanoid = targetChar.Humanoid
             
-            -- التأكد أنه إنسان طبيعي وليس وحش، وأن صحته ناقصة ويحتاج علاج
             if not isMonster(targetChar) and targetHumanoid.Health < targetHumanoid.MaxHealth and targetHumanoid.Health > 0 then
                 local distance = (myCharacter.HumanoidRootPart.Position - targetChar.HumanoidRootPart.Position).Magnitude
                 if distance < shortestDistance then
@@ -121,7 +127,7 @@ task.spawn(function()
             for _, v in pairs(workspace:GetChildren()) do
                 if v:IsA("Model") and isMonster(v) and v:FindFirstChild("HumanoidRootPart") and myCharacter and myCharacter:FindFirstChild("HumanoidRootPart") then
                     local distToMonster = (myCharacter.HumanoidRootPart.Position - v.HumanoidRootPart.Position).Magnitude
-                    if distToMonster < 30 then -- إذا كان الوحش على بعد أقل من 30 خطوة
+                    if distToMonster < 30 then
                         monsterAlert = true
                         break
                     end
@@ -129,16 +135,49 @@ task.spawn(function()
             end
             
             if monsterAlert then
-                -- وحش قريب! قفل السكربت فوراً لحمايتك
                 isAutoActive = false
-                AutoButton.Text = "⚠️ WARNING: Monster Near! OFF"
+                AutoButton.Text = "⚠️ Monster Near! OFF"
                 AutoButton.BackgroundColor3 = Color3.fromRGB(255, 0, 0)
-                if myHumanoid then myHumanoid:MoveTo(myCharacter.HumanoidRootPart.Position) end -- إيقاف الحركة
+                if myHumanoid then myHumanoid:MoveTo(myCharacter.HumanoidRootPart.Position) end
                 continue
             end
             
-            -- إذا الوضع آمن، ابحث عن مريض للمشي إليه وعلاجه
             local patient = getClosestPatient()
             if patient and myHumanoid and myCharacter:FindFirstChild("HumanoidRootPart") then
-                -- المشي التلقائي باتجاه الهدف
                 myHumanoid:MoveTo(patient.HumanoidRootPart.Position)
+            end
+        end
+    end
+end)
+
+-- تشغيل وإيقاف البوت التلقائي
+AutoButton.MouseButton1Click:Connect(function()
+	if isAutoActive then
+		isAutoActive = false
+		AutoButton.Text = "Auto Heal & Walk: OFF"
+		AutoButton.BackgroundColor3 = Color3.fromRGB(200, 50, 50)
+	else
+		isAutoActive = true
+		AutoButton.Text = "Auto Heal & Walk: ON"
+		AutoButton.BackgroundColor3 = Color3.fromRGB(50, 200, 50)
+	end
+end)
+
+-- التحكم بالسرعة
+SpeedButton.MouseButton1Click:Connect(function()
+	local character = player.Character
+	if character and character:FindFirstChild("Humanoid") then
+		local humanoid = character.Humanoid
+		if isSpeedCapped then
+			humanoid.WalkSpeed = 16
+			SpeedButton.Text = "Speed Boost: OFF"
+			SpeedButton.BackgroundColor3 = Color3.fromRGB(200, 50, 50)
+			isSpeedCapped = false
+		else
+			humanoid.WalkSpeed = 50
+			SpeedButton.Text = "Speed Boost: ON"
+			SpeedButton.BackgroundColor3 = Color3.fromRGB(50, 200, 50)
+			isSpeedCapped = true
+		end
+	end
+end)
