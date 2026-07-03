@@ -1,25 +1,28 @@
--- تحسين التوافق مع مشغلات الجوال مثل دلتا
+-- تأمين تشغيل الواجهة على دلتا وجوالات أندرويد/آيفون
 local HospitalGui = Instance.new("ScreenGui")
 HospitalGui.Name = "HospitalGui"
 HospitalGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 
--- محاولة استخدام gethui التابع للمشغلات، وإذا لم يتوفر يتم النقل إلى PlayerGui
-if gethui then
-    HospitalGui.Parent = gethui()
-elseif game:GetService("CoreGui"):FindFirstChild("RobloxGui") then
-    HospitalGui.Parent = game:GetService("CoreGui")
-else
-    HospitalGui.Parent = game:GetService("Players").LocalPlayer:WaitForChild("PlayerGui")
-end
+pcall(function()
+    if gethui then
+        HospitalGui.Parent = gethui()
+    elseif game:GetService("CoreGui") then
+        HospitalGui.Parent = game:GetService("CoreGui")
+    else
+        HospitalGui.Parent = game:GetService("Players").LocalPlayer:WaitForChild("PlayerGui")
+    end
+end)
 
 -- اللوحة الرئيسية
 local MainFrame = Instance.new("Frame")
 MainFrame.Name = "MainFrame"
 MainFrame.AnchorPoint = Vector2.new(0.5, 0.5)
 MainFrame.Position = UDim2.new(0.5, 0, 0.5, 0)
-MainFrame.Size = UDim2.new(0, 280, 0, 200)
-MainFrame.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+MainFrame.Size = UDim2.new(0, 260, 0, 180)
+MainFrame.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
 MainFrame.BorderSizePixel = 0
+MainFrame.Active = true
+MainFrame.Draggable = true -- ميزة سحب اللوحة بإصبعك على الجوال
 MainFrame.Parent = HospitalGui
 
 local MainCorner = Instance.new("UICorner")
@@ -29,155 +32,157 @@ MainCorner.Parent = MainFrame
 -- عنوان الواجهة
 local Title = Instance.new("TextLabel")
 Title.Name = "Title"
-Title.Text = "Animal Hospital Auto-Helper"
+Title.Text = "Animal Hospital [Delta]"
 Title.Size = UDim2.new(1, 0, 0.25, 0)
 Title.TextColor3 = Color3.fromRGB(255, 255, 255)
 Title.BackgroundTransparency = 1
-Title.Font = Enum.Font.Ubuntu
+Title.Font = Enum.Font.SourceSansBold
 Title.TextSize = 18
 Title.Parent = MainFrame
 
 -- زر التشغيل التلقائي والملاحقة والعلاج
 local AutoButton = Instance.new("TextButton")
 AutoButton.Name = "AutoButton"
-AutoButton.Text = "Auto Heal & Walk: OFF"
+AutoButton.Text = "Auto Walk & Heal: OFF"
 AutoButton.Size = UDim2.new(0.85, 0, 0.25, 0)
 AutoButton.Position = UDim2.new(0.075, 0, 0.35, 0)
 AutoButton.BackgroundColor3 = Color3.fromRGB(200, 50, 50)
 AutoButton.TextColor3 = Color3.fromRGB(255, 255, 255)
 AutoButton.Font = Enum.Font.SourceSansBold
-AutoButton.TextSize = 16
+AutoButton.TextSize = 15
 AutoButton.Parent = MainFrame
 
 local AutoCorner = Instance.new("UICorner")
 AutoCorner.CornerRadius = UDim.new(0, 6)
 AutoCorner.Parent = AutoButton
 
--- زر سرعة المشي الذكية
+-- زر السرعة
 local SpeedButton = Instance.new("TextButton")
 SpeedButton.Name = "SpeedButton"
-SpeedButton.Text = "Speed Boost: OFF"
+SpeedButton.Text = "Speed: OFF"
 SpeedButton.Size = UDim2.new(0.85, 0, 0.25, 0)
 SpeedButton.Position = UDim2.new(0.075, 0, 0.65, 0)
 SpeedButton.BackgroundColor3 = Color3.fromRGB(200, 50, 50)
 SpeedButton.TextColor3 = Color3.fromRGB(255, 255, 255)
 SpeedButton.Font = Enum.Font.SourceSansBold
-SpeedButton.TextSize = 16
+SpeedButton.TextSize = 15
 SpeedButton.Parent = MainFrame
 
 local SpeedCorner = Instance.new("UICorner")
 SpeedCorner.CornerRadius = UDim.new(0, 6)
 SpeedCorner.Parent = SpeedButton
 
--- البرمجة والتحكم
+-- البرمجة والتحكم لـ Delta
 local Players = game:GetService("Players")
-local RunService = game:GetService("RunService")
 local player = Players.LocalPlayer
 
 local isAutoActive = false
-local isSpeedCapped = false
+local isSpeedActive = false
 
--- قائمة بأسماء الوحوش أو الأعداء لتجنبهم (عدّلها حسب أسماء الوحوش باللعبة)
-local MonsterNames = {"Monster", "Zombie", "EvilAnimal", "Ghost"} 
+-- الكلمات الدلالية للوحوش ليتجنبها ويقفل السكربت
+local MonsterKeywords = {"Monster", "Zombie", "Monster", "Ghost", "Enemy"}
 
--- دالة للتحقق هل الكائن وحش؟
-local function isMonster(target)
-    for _, name in pairs(MonsterNames) do
-        if string.find(target.Name, name) or (target:FindFirstChild("Humanoid") and string.find(target.Humanoid.DisplayName, name)) then
+local function checkIsMonster(obj)
+    for _, word in pairs(MonsterKeywords) do
+        if string.find(string.lower(obj.Name), string.lower(word)) then
             return true
         end
     end
     return false
 end
 
--- دالة البحث عن أقرب إنسان/لاعب يحتاج علاج
-local function getClosestPatient()
-    local closestPatient = nil
-    local shortestDistance = math.huge
-    local myCharacter = player.Character
-    if not myCharacter or not myCharacter:FindFirstChild("HumanoidRootPart") then return nil end
+-- دالة البحث الشامل عن مريض (سواء لاعب أو NPC)
+local function findPatient()
+    local myChar = player.Character
+    if not myChar or not myChar:FindFirstChild("HumanoidRootPart") then return nil end
     
-    for _, p in pairs(Players:GetPlayers()) do
-        if p ~= player and p.Character and p.Character:FindFirstChild("HumanoidRootPart") and p.Character:FindFirstChild("Humanoid") then
-            local targetChar = p.Character
-            local targetHumanoid = targetChar.Humanoid
-            
-            if not isMonster(targetChar) and targetHumanoid.Health < targetHumanoid.MaxHealth and targetHumanoid.Health > 0 then
-                local distance = (myCharacter.HumanoidRootPart.Position - targetChar.HumanoidRootPart.Position).Magnitude
-                if distance < shortestDistance then
-                    shortestDistance = distance
-                    closestPatient = targetChar
-                end
-            end
-        end
-    end
-    return closestPatient
-end
-
--- حلقة التشغيل التلقائي والملاحقة
-task.spawn(function()
-    while true do
-        task.wait(0.1)
-        if isAutoActive then
-            local myCharacter = player.Character
-            local myHumanoid = myCharacter and myCharacter:FindFirstChild("Humanoid")
-            
-            -- فحص إذا كان هناك وحش قريب جداً منا لإيقاف السكربت فوراً لحمايتك
-            local monsterAlert = false
-            for _, v in pairs(workspace:GetChildren()) do
-                if v:IsA("Model") and isMonster(v) and v:FindFirstChild("HumanoidRootPart") and myCharacter and myCharacter:FindFirstChild("HumanoidRootPart") then
-                    local distToMonster = (myCharacter.HumanoidRootPart.Position - v.HumanoidRootPart.Position).Magnitude
-                    if distToMonster < 30 then
-                        monsterAlert = true
-                        break
+    local target = nil
+    local maxDist = math.huge
+    
+    -- البحث في كل مجسمات اللعبة بالـ Workspace
+    for _, v in pairs(workspace:GetChildren()) do
+        if v:IsA("Model") and v ~= myChar and v:FindFirstChild("HumanoidRootPart") then
+            -- التأكد أنه ليس وحشاً
+            if not checkIsMonster(v) then
+                -- إذا كان لاعب مصاب أو يحمل اسماً يدل على مريض
+                local humanoid = v:FindFirstChild("Humanoid")
+                if (humanoid and humanoid.Health < humanoid.MaxHealth and humanoid.Health > 0) or string.find(string.lower(v.Name), "patient") or string.find(string.lower(v.Name), "sick") then
+                    local dist = (myChar.HumanoidRootPart.Position - v.HumanoidRootPart.Position).Magnitude
+                    if dist < maxDist then
+                        maxDist = dist
+                        target = v
                     end
                 end
             end
+        end
+    end
+    return target
+end
+
+-- حلقة ذكية آمنة على الجوال لتجنب الـ Crash
+task.spawn(function()
+    while task.wait(0.3) do -- تأخير بسيط لحماية معالج الجوال
+        if isAutoActive then
+            local myChar = player.Character
+            local myHumanoid = myChar and myChar:FindFirstChild("Humanoid")
+            local myRoot = myChar and myChar:FindFirstChild("HumanoidRootPart")
             
-            if monsterAlert then
-                isAutoActive = false
-                AutoButton.Text = "⚠️ Monster Near! OFF"
-                AutoButton.BackgroundColor3 = Color3.fromRGB(255, 0, 0)
-                if myHumanoid then myHumanoid:MoveTo(myCharacter.HumanoidRootPart.Position) end
-                continue
-            end
-            
-            local patient = getClosestPatient()
-            if patient and myHumanoid and myCharacter:FindFirstChild("HumanoidRootPart") then
-                myHumanoid:MoveTo(patient.HumanoidRootPart.Position)
+            if myHumanoid and myRoot then
+                -- فحص فوري لحمايتك إذا كان هناك وحش قريب جداً
+                local monsterClose = false
+                for _, v in pairs(workspace:GetChildren()) do
+                    if v:IsA("Model") and checkIsMonster(v) and v:FindFirstChild("HumanoidRootPart") then
+                        if (myRoot.Position - v.HumanoidRootPart.Position).Magnitude < 25 then
+                            monsterClose = true
+                            break
+                        end
+                    end
+                end
+                
+                if monsterClose then
+                    isAutoActive = false
+                    AutoButton.Text = "⚠️ Monster! Script Stopped"
+                    AutoButton.BackgroundColor3 = Color3.fromRGB(255, 0, 0)
+                    myHumanoid:MoveTo(myRoot.Position)
+                    continue
+                end
+                
+                -- التوجه للمريض
+                local patient = findPatient()
+                if patient and patient:FindFirstChild("HumanoidRootPart") then
+                    myHumanoid:MoveTo(patient.HumanoidRootPart.Position)
+                end
             end
         end
     end
 end)
 
--- تشغيل وإيقاف البوت التلقائي
+-- تفعيل البوت
 AutoButton.MouseButton1Click:Connect(function()
-	if isAutoActive then
-		isAutoActive = false
-		AutoButton.Text = "Auto Heal & Walk: OFF"
-		AutoButton.BackgroundColor3 = Color3.fromRGB(200, 50, 50)
-	else
-		isAutoActive = true
-		AutoButton.Text = "Auto Heal & Walk: ON"
-		AutoButton.BackgroundColor3 = Color3.fromRGB(50, 200, 50)
-	end
+    isAutoActive = not isAutoActive
+    if isAutoActive then
+        AutoButton.Text = "Auto Walk & Heal: ON"
+        AutoButton.BackgroundColor3 = Color3.fromRGB(50, 200, 50)
+    else
+        AutoButton.Text = "Auto Walk & Heal: OFF"
+        AutoButton.BackgroundColor3 = Color3.fromRGB(200, 50, 50)
+    end
 end)
 
--- التحكم بالسرعة
+-- تفعيل السرعة
 SpeedButton.MouseButton1Click:Connect(function()
-	local character = player.Character
-	if character and character:FindFirstChild("Humanoid") then
-		local humanoid = character.Humanoid
-		if isSpeedCapped then
-			humanoid.WalkSpeed = 16
-			SpeedButton.Text = "Speed Boost: OFF"
-			SpeedButton.BackgroundColor3 = Color3.fromRGB(200, 50, 50)
-			isSpeedCapped = false
-		else
-			humanoid.WalkSpeed = 50
-			SpeedButton.Text = "Speed Boost: ON"
-			SpeedButton.BackgroundColor3 = Color3.fromRGB(50, 200, 50)
-			isSpeedCapped = true
-		end
-	end
+    isSpeedActive = not isSpeedActive
+    local myChar = player.Character
+    local hum = myChar and myChar:FindFirstChild("Humanoid")
+    if hum then
+        if isSpeedActive then
+            hum.WalkSpeed = 45
+            SpeedButton.Text = "Speed: ON (45)"
+            SpeedButton.BackgroundColor3 = Color3.fromRGB(50, 200, 50)
+        else
+            hum.WalkSpeed = 16
+            SpeedButton.Text = "Speed: OFF"
+            SpeedButton.BackgroundColor3 = Color3.fromRGB(200, 50, 50)
+        end
+    end
 end)
