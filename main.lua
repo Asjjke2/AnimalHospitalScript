@@ -1,14 +1,13 @@
--- سكربت المستشفى الذكي المخصص لـ Delta
-print("Animal Hospital AI Script Loaded!")
+-- Animal Hospital AI Script [Delta Compatible]
+print("Animal Hospital AI Script Loaded Successfully!")
 
 local Players = game:GetService("Players")
+local ProximityPromptService = game:GetService("ProximityPromptService")
 local player = Players.LocalPlayer
 
--- إعدادات الأمان والمسافات
-local SAFE_ZONE_POS = Vector3.new(0, 5, 0) -- ضع هنا إحداثيات الغرفة الآمنة إذا كنت تعرفها (اختياري)
-local MONSTER_DISTANCE = 35 -- المسافة التي يعتبر فيها الوحش خطراً
+local MONSTER_DISTANCE = 35 -- المسافة الأمنية من الوحوش
 
--- دالة فحص إذا كان الكائن وحشاً
+-- دالة فحص الوحوش
 local function isMonster(obj)
     local name = string.lower(obj.Name)
     if string.find(name, "monster") or string.find(name, "ghost") or string.find(name, "zombie") or string.find(name, "وحش") then
@@ -17,14 +16,19 @@ local function isMonster(obj)
     return false
 end
 
--- دالة لتشغيل أزرار التفاعل تلقائياً (علاج، فتح/قفل باب)
-local function interactWithPrompt(object)
-    if object:IsA("ProximityPrompt") then
-        fireproximityprompt(object) -- أمر خاص بمشغلات الجوال لتفعيل الأزرار تلقائياً
+-- دالة التفاعل المضمونة مع الأزرار لفتح الأبواب والعلاج
+local function interactWithPrompt(prompt)
+    if prompt and prompt:IsA("ProximityPrompt") then
+        task.spawn(function()
+            -- استخدام الطريقة الرسمية المتوافقة مع دلتا والمشغلات الحديثة
+            prompt:InputHoldBegin()
+            task.wait(prompt.HoldDuration + 0.1)
+            prompt:InputHoldEnd()
+        end)
     end
 end
 
--- دالة البحث عن أقرب مريض (لاعب أو شخصية عامة) ليس وحشاً
+-- دالة البحث عن أقرب مريض
 local function findClosestPatient()
     local myChar = player.Character
     if not myChar or not myChar:FindFirstChild("HumanoidRootPart") then return nil end
@@ -46,15 +50,15 @@ local function findClosestPatient()
     return closest
 end
 
--- الحلقة الذكية لإدارة الحركة، الأبواب، والعلاج
+-- الحلقة الذكية (مؤمنة لحماية معالج الجوال من الكراش)
 task.spawn(function()
-    while task.wait(0.3) do
+    while task.wait(0.4) do
         local myChar = player.Character
         local myHumanoid = myChar and myChar:FindFirstChild("Humanoid")
         local myRoot = myChar and myChar:FindFirstChild("HumanoidRootPart")
         
         if myHumanoid and myRoot then
-            -- 1. فحص وجود وحش قريب
+            -- 1. فحص وجود وحش قريب جداً لقفل الأبواب
             local monsterDetected = nil
             for _, v in pairs(workspace:GetChildren()) do
                 if v:IsA("Model") and isMonster(v) and v:FindFirstChild("HumanoidRootPart") then
@@ -66,48 +70,44 @@ task.spawn(function()
                 end
             end
             
-            -- [حالة وجود وحش]: اقفل الباب واحمِ نفسك
+            -- [إذا وجد وحش]: قفل الأبواب فوراً وتوقف
             if monsterDetected then
-                print("⚠️ وحش قريب! جاري قفل الأبواب وتأمين المكان...")
-                
-                -- البحث عن أزرار الأبواب القريبة لقفلها
+                -- قفل الأبواب القريبة
                 for _, child in pairs(workspace:GetDescendants()) do
                     if child:IsA("ProximityPrompt") and (string.find(string.lower(child.Parent.Name), "door") or string.find(string.lower(child.Parent.Name), "gate")) then
                         local doorDist = (myRoot.Position - child.Parent:GetPivot().Position).Magnitude
-                        if doorDist < 20 then
-                            -- تفاعل مع الباب لقفله (حسب نظام اللعبة إذا كان الزر يغلق أو يقفل)
+                        if doorDist < 25 then
+                            interactWithPrompt(child)
+                        end
+                    end
+                end
+                myHumanoid:MoveTo(myRoot.Position) -- قف مكانك لحمايتك
+                continue 
+            end
+            
+            -- [إذا الوضع آمن]: اذهب للمريض وافتح الأبواب في طريقك
+            local patient = findClosestPatient()
+            if patient and patient:FindFirstChild("HumanoidRootPart") then
+                myHumanoid:MoveTo(patient.HumanoidRootPart.Position)
+                
+                -- فتح الأبواب التي تعترض طريقك
+                for _, child in pairs(workspace:GetDescendants()) do
+                    if child:IsA("ProximityPrompt") and (string.find(string.lower(child.Parent.Name), "door") or string.find(string.lower(child.Parent.Name), "gate")) then
+                        local doorDist = (myRoot.Position - child.Parent:GetPivot().Position).Magnitude
+                        if doorDist < 12 then
                             interactWithPrompt(child)
                         end
                     end
                 end
                 
-                -- التوقف عن الحركة تماماً خلف الباب
-                myHumanoid:MoveTo(myRoot.Position) 
-                continue -- تخطي بقية الأوامر حتى يذهب الوحش
-            end
-            
-            -- [حالة الوضع آمن]: اذهب للمريض وعالجه وافتح الأبواب في طريقك
-            local patient = findClosestPatient()
-            if patient and patient:FindFirstChild("HumanoidRootPart") then
-                -- المشي باتجاه المريض
-                myHumanoid:MoveTo(patient.HumanoidRootPart.Position)
-                
-                -- فحص إذا كان هناك باب يعترض طريقك أثناء المشي لفتحه
-                for _, child in pairs(workspace:GetDescendants()) do
-                    if child:IsA("ProximityPrompt") and (string.find(string.lower(child.Parent.Name), "door") or string.find(string.lower(child.Parent.Name), "gate")) then
-                        local doorDist = (myRoot.Position - child.Parent:GetPivot().Position).Magnitude
-                        if doorDist < 10 then
-                            interactWithPrompt(child) -- فتح البارد فوراً للمرور
-                        end
-                    end
-                end
-                
-                -- إذا وصلت للمريض (مسافة قريبة جداً)، قم بعلاجه تلقائياً
+                -- علاج المريض عند الوصول إليه
                 local patientDist = (myRoot.Position - patient.HumanoidRootPart.Position).Magnitude
-                if patientDist < 7 then
-                    local prompt = patient:FindFirstChildOfClass("ProximityPrompt") or patient:FindFirstChild("HealPrompt", true)
-                    if prompt then
-                        interactWithPrompt(prompt)
+                if patientDist < 8 then
+                    -- البحث عن أي زر تفاعل داخل مجسم المريض
+                    for _, prompt in pairs(patient:GetDescendants()) do
+                        if prompt:IsA("ProximityPrompt") then
+                            interactWithPrompt(prompt)
+                        end
                     end
                 end
             end
